@@ -1,14 +1,19 @@
 import fs from 'node:fs';
 import { json, error, type RequestEvent } from '@sveltejs/kit';
 import { config } from '$lib/server/config.js';
-import { stmtInsert } from '$lib/server/db.js';
+import { dbInsertItem } from '$lib/server/db.js';
 import { generateId, sanitizeFilename, itemFilePath, ttlToExpires } from '$lib/server/helpers.js';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
+import { uploadMode } from '$lib/server/runtime.js';
 import bcrypt from 'bcryptjs';
 
 export async function POST(event: RequestEvent) {
 	const { request, getClientAddress } = event;
 	checkRateLimit('upload', getClientAddress());
+
+	if (uploadMode === 'blob') {
+		throw error(400, 'Direct uploads are enabled; use the client upload flow.');
+	}
 
 	let formData: FormData;
 	try {
@@ -41,7 +46,21 @@ export async function POST(event: RequestEvent) {
 	const expiresAt = ttlToExpires(ttl);
 	const now = Date.now();
 
-	stmtInsert.run(id, 'file', originalName, mimetype, file.size, null, null, null, passwordHash, expiresAt, now);
+	await dbInsertItem({
+		id,
+		type: 'file',
+		filename: originalName,
+		mimetype,
+		size: file.size,
+		language: null,
+		url: null,
+		blob_url: null,
+		content: null,
+		link_meta: null,
+		password_hash: passwordHash,
+		expires_at: expiresAt,
+		created_at: now
+	});
 
 	return json({ id }, { status: 201 });
 }

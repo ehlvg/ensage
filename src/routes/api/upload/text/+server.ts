@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import { json, error, type RequestEvent } from '@sveltejs/kit';
 import { config } from '$lib/server/config.js';
-import { stmtInsert } from '$lib/server/db.js';
+import { dbInsertItem } from '$lib/server/db.js';
 import { generateId, itemFilePath, ttlToExpires } from '$lib/server/helpers.js';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
+import { uploadMode } from '$lib/server/runtime.js';
 import bcrypt from 'bcryptjs';
 
 export async function POST(event: RequestEvent) {
@@ -31,21 +32,25 @@ export async function POST(event: RequestEvent) {
 	const expiresAt = ttlToExpires(ttl);
 	const now = Date.now();
 
-	fs.writeFileSync(itemFilePath(id), content, 'utf8');
+	if (uploadMode === 'local') {
+		fs.writeFileSync(itemFilePath(id), content, 'utf8');
+	}
 
-	stmtInsert.run(
+	await dbInsertItem({
 		id,
-		'text',
-		null,
-		'text/plain',
-		Buffer.byteLength(content, 'utf8'),
-		language ?? 'auto',
-		null,
-		null,
-		passwordHash,
-		expiresAt,
-		now
-	);
+		type: 'text',
+		filename: null,
+		mimetype: 'text/plain',
+		size: Buffer.byteLength(content, 'utf8'),
+		language: language ?? 'auto',
+		url: null,
+		blob_url: null,
+		content: uploadMode === 'blob' ? content : null,
+		link_meta: null,
+		password_hash: passwordHash,
+		expires_at: expiresAt,
+		created_at: now
+	});
 
 	return json({ id }, { status: 201 });
 }

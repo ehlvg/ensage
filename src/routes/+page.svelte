@@ -2,6 +2,8 @@
 	import Header from '$lib/components/Header.svelte';
 	import { formatBytes } from '$lib/utils.js';
 	import { onMount } from 'svelte';
+	import { upload as blobUpload } from '@vercel/blob/client';
+	import { resolve } from '$app/paths';
 
 	// ── State ──────────────────────────────────────────────────────────────
 	type Tab = 'text' | 'file' | 'link';
@@ -35,6 +37,8 @@
 
 	// Base URL for displaying the share link (set on client only)
 	let origin = $state('');
+	let uploadMode = $state<'local' | 'blob'>('local');
+	let maxFileSize = $state(500 * 1024 * 1024);
 
 	// Apply server accent colour and capture current origin on the client
 	onMount(async () => {
@@ -42,10 +46,18 @@
 		try {
 			const res = await fetch('/api/config');
 			if (res.ok) {
-				const cfg = (await res.json()) as { accentColor?: string };
+				const cfg = (await res.json()) as {
+					accentColor?: string;
+					uploadMode?: 'local' | 'blob';
+					maxFileSize?: number;
+				};
 				if (cfg.accentColor) {
 					document.documentElement.style.setProperty('--accent', cfg.accentColor);
 					document.documentElement.style.setProperty('--accent-d', cfg.accentColor);
+				}
+				if (cfg.uploadMode === 'blob' || cfg.uploadMode === 'local') uploadMode = cfg.uploadMode;
+				if (typeof cfg.maxFileSize === 'number' && Number.isFinite(cfg.maxFileSize)) {
+					maxFileSize = cfg.maxFileSize;
 				}
 			}
 		} catch {
@@ -123,10 +135,54 @@
 
 	async function submitFile() {
 		if (!selectedFile) return;
+		if (selectedFile.size > maxFileSize) {
+			notice = { msg: `File too large (max ${formatBytes(maxFileSize)}).`, type: 'error' };
+			return;
+		}
 		fileSubmitting = true;
 		uploading = true;
 		uploadProgress = 0;
 		notice = null;
+
+		if (uploadMode === 'blob') {
+			try {
+				const initRes = await fetch('/api/upload/file/init', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						filename: selectedFile.name,
+						mimetype: selectedFile.type || 'application/octet-stream',
+						size: selectedFile.size,
+						ttl: fileTtl,
+						password: filePassword || undefined
+					})
+				});
+				const initData = (await initRes.json()) as {
+					id?: string;
+					pathname?: string;
+					message?: string;
+				};
+				if (!initRes.ok || !initData.id || !initData.pathname) {
+					notice = { msg: initData.message ?? 'Upload init failed.', type: 'error' };
+					return;
+				}
+
+				await blobUpload(initData.pathname, selectedFile, {
+					access: 'private',
+					handleUploadUrl: '/api/blob/upload',
+					clientPayload: JSON.stringify({ id: initData.id })
+				});
+
+				uploadProgress = 100;
+				resultId = initData.id;
+			} catch {
+				notice = { msg: 'Network error. Please try again.', type: 'error' };
+			} finally {
+				uploading = false;
+				fileSubmitting = false;
+			}
+			return;
+		}
 
 		const formData = new FormData();
 		formData.append('file', selectedFile);
@@ -219,7 +275,9 @@
 		const url = `${window.location.origin}/${resultId}`;
 		await navigator.clipboard.writeText(url);
 		copyLabel = 'Copied!';
-		setTimeout(() => { copyLabel = 'Copy link'; }, 1500);
+		setTimeout(() => {
+			copyLabel = 'Copy link';
+		}, 1500);
 	}
 
 	const LANGUAGES = [
@@ -277,7 +335,7 @@
 			</div>
 			<div class="result-actions">
 				<button onclick={copyResult} class="btn btn-primary">{copyLabel}</button>
-				<a href="/{resultId}" class="btn">View</a>
+				<a href={resolve('/[id]', { id: resultId })} class="btn">View</a>
 				<button onclick={reset} class="btn">New upload</button>
 			</div>
 			{#if notice}
@@ -293,7 +351,7 @@
 
 		<!-- Tabs -->
 		<div class="tabs">
-			{#each (['text', 'file', 'link'] as Tab[]) as tab}
+			{#each ['text', 'file', 'link'] as Tab[] as tab (tab)}
 				<button onclick={() => setTab(tab)} class="tab" class:active={activeTab === tab}>
 					{tab}
 				</button>
@@ -316,7 +374,7 @@
 				<div class="field">
 					<label class="field-label" for="text-language">Language</label>
 					<select id="text-language" bind:value={textLanguage} class="field-select">
-						{#each LANGUAGES as [value, label]}
+						{#each LANGUAGES as [value, label] (value)}
 							<option {value}>{label}</option>
 						{/each}
 					</select>
@@ -324,7 +382,7 @@
 				<div class="field">
 					<label class="field-label" for="text-ttl">Expires</label>
 					<select id="text-ttl" bind:value={textTtl} class="field-select">
-						{#each TTL_OPTIONS as [value, label]}
+						{#each TTL_OPTIONS as [value, label] (value)}
 							<option {value}>{label}</option>
 						{/each}
 					</select>
@@ -348,7 +406,7 @@
 				{textSubmitting ? 'Sharing...' : 'Share text'}
 			</button>
 
-		<!-- ── File tab ──────────────────────────────────────────────── -->
+			<!-- ── File tab ──────────────────────────────────────────────── -->
 		{:else if activeTab === 'file'}
 			<div
 				role="button"
@@ -357,13 +415,18 @@
 				class:drag-over={isDragOver}
 				onclick={() => document.getElementById('file-input')?.click()}
 				onkeydown={(e) => e.key === 'Enter' && document.getElementById('file-input')?.click()}
-				ondragover={(e) => { e.preventDefault(); isDragOver = true; }}
-				ondragleave={() => { isDragOver = false; }}
+				ondragover={(e) => {
+					e.preventDefault();
+					isDragOver = true;
+				}}
+				ondragleave={() => {
+					isDragOver = false;
+				}}
 				ondrop={handleDrop}
 			>
 				<div class="dropzone-icon">&#8593;</div>
 				<div>Click or drag a file here</div>
-				<div class="dropzone-hint">Up to {formatBytes(500 * 1024 * 1024)}</div>
+				<div class="dropzone-hint">Up to {formatBytes(maxFileSize)}</div>
 				<input id="file-input" type="file" class="hidden" onchange={handleFileInput} />
 			</div>
 
@@ -380,11 +443,11 @@
 				</div>
 			{/if}
 
-			<div class="form-row mb-4 mt-4">
+			<div class="form-row mt-4 mb-4">
 				<div class="field">
 					<label class="field-label" for="file-ttl">Expires</label>
 					<select id="file-ttl" bind:value={fileTtl} class="field-select">
-						{#each TTL_OPTIONS as [value, label]}
+						{#each TTL_OPTIONS as [value, label] (value)}
 							<option {value}>{label}</option>
 						{/each}
 					</select>
@@ -411,7 +474,7 @@
 				{fileSubmitting ? 'Uploading...' : 'Upload file'}
 			</button>
 
-		<!-- ── Link tab ──────────────────────────────────────────────── -->
+			<!-- ── Link tab ──────────────────────────────────────────────── -->
 		{:else if activeTab === 'link'}
 			<div class="field">
 				<label class="field-label" for="link-url">URL</label>
@@ -429,7 +492,7 @@
 				<div class="field">
 					<label class="field-label" for="link-ttl">Expires</label>
 					<select id="link-ttl" bind:value={linkTtl} class="field-select">
-						{#each TTL_OPTIONS as [value, label]}
+						{#each TTL_OPTIONS as [value, label] (value)}
 							<option {value}>{label}</option>
 						{/each}
 					</select>

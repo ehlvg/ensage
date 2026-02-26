@@ -1,5 +1,5 @@
 import { config } from './config.js';
-import { stmtUpdateMeta } from './db.js';
+import { dbUpdateLinkMeta } from './db.js';
 import type { LinkMeta } from './types.js';
 import net from 'node:net';
 
@@ -35,7 +35,12 @@ function isPrivateOrLocalAddress(target: URL): boolean {
 		const normalized = host.replace(/^\[|\]$/g, '').toLowerCase();
 		if (normalized === '::1') return true;
 		if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true; // fc00::/7
-		if (normalized.startsWith('fe8') || normalized.startsWith('fe9') || normalized.startsWith('fea') || normalized.startsWith('feb')) {
+		if (
+			normalized.startsWith('fe8') ||
+			normalized.startsWith('fe9') ||
+			normalized.startsWith('fea') ||
+			normalized.startsWith('feb')
+		) {
 			return true; // fe80::/10 link-local
 		}
 	}
@@ -68,14 +73,8 @@ function extractOg(html: string, property: string): string | null {
 }
 
 function extractMeta(html: string, name: string): string | null {
-	const nameRe = new RegExp(
-		`<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']+)["']`,
-		'i'
-	);
-	const contentRe = new RegExp(
-		`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${name}["']`,
-		'i'
-	);
+	const nameRe = new RegExp(`<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']+)["']`, 'i');
+	const contentRe = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${name}["']`, 'i');
 	const m = html.match(nameRe) ?? html.match(contentRe);
 	return m ? decode(m[1]) : null;
 }
@@ -168,5 +167,5 @@ export async function fetchLinkMeta(itemId: string, url: string): Promise<void> 
 		}
 	}
 
-	stmtUpdateMeta.run(JSON.stringify(meta), itemId);
+	await dbUpdateLinkMeta(itemId, JSON.stringify(meta));
 }

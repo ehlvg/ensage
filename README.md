@@ -1,10 +1,8 @@
-🌿 ensage
-=========
+# 🌿 ensage
 
 minimal self-hosted pastebin and file drop built with sveltekit, sqlite and filesystem storage.
 
-architecture
-------------
+## architecture
 
 - single-node sveltekit app with node adapter
 - sqlite database for item metadata (text, files, links)
@@ -13,8 +11,7 @@ architecture
 - hourly cleanup job removing expired items and files
 - optional link previews and ai summaries via exa api
 
-features
---------
+## features
 
 - share text snippets with syntax highlighting
 - upload files up to a configurable size limit
@@ -23,8 +20,7 @@ features
 - time-to-live options (1h, 24h, 7d, never)
 - light and dark themes, server-configurable accent color
 
-how to run
-----------
+## how to run
 
 1. install dependencies:
 
@@ -33,7 +29,6 @@ how to run
    ```
 
 2. create an `.env` file (or export env vars) if you want to override defaults:
-
    - `PORT` – http port (default: 3000)
    - `UPLOAD_DIR` – directory for stored files (default: ./uploads)
    - `DB_PATH` – sqlite database path (default: ./db/ensage.db)
@@ -54,4 +49,3 @@ how to run
    bun build
    bun start
    ```
-

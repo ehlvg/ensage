@@ -1,5 +1,5 @@
 import { json, error, type RequestEvent } from '@sveltejs/kit';
-import { stmtInsert } from '$lib/server/db.js';
+import { dbInsertItem } from '$lib/server/db.js';
 import { generateId, ttlToExpires, isValidUrl } from '$lib/server/helpers.js';
 import { fetchLinkMeta } from '$lib/server/link-meta.js';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
@@ -26,7 +26,21 @@ export async function POST(event: RequestEvent) {
 	const expiresAt = ttlToExpires(ttl);
 	const now = Date.now();
 
-	stmtInsert.run(id, 'link', null, null, null, null, url, null, passwordHash, expiresAt, now);
+	await dbInsertItem({
+		id,
+		type: 'link',
+		filename: null,
+		mimetype: null,
+		size: null,
+		language: null,
+		url,
+		blob_url: null,
+		content: null,
+		link_meta: null,
+		password_hash: passwordHash,
+		expires_at: expiresAt,
+		created_at: now
+	});
 
 	// Fetch OG/Exa metadata asynchronously — do not block the response
 	fetchLinkMeta(id, url).catch((err) => {

@@ -1,61 +1,122 @@
-import { DatabaseSync } from 'node:sqlite';
-import fs from 'node:fs';
-import path from 'node:path';
-import { config } from './config.js';
 import type { DbItem, LinkMeta } from './types.js';
+import { isVercel, hasPostgres } from './runtime.js';
 
-// Ensure directories exist before opening the database
-fs.mkdirSync(config.uploadDir, { recursive: true });
-fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
-
-export const db = new DatabaseSync(config.dbPath);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS items (
-    id            TEXT PRIMARY KEY,
-    type          TEXT NOT NULL,
-    filename      TEXT,
-    mimetype      TEXT,
-    size          INTEGER,
-    language      TEXT,
-    url           TEXT,
-    password_hash TEXT,
-    expires_at    INTEGER,
-    created_at    INTEGER NOT NULL
-  );
-`);
-
-// Schema migrations — safe to run on every startup
-for (const col of ['url TEXT', 'link_meta TEXT']) {
-	try {
-		db.exec(`ALTER TABLE items ADD COLUMN ${col};`);
-	} catch {
-		// Column already exists — expected after first run
-	}
-}
-
-// ── Prepared statements ──────────────────────────────────────────────────────
-
-export const stmtInsert = db.prepare(`
-  INSERT INTO items (id, type, filename, mimetype, size, language, url, link_meta, password_hash, expires_at, created_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
-
-export const stmtGet = db.prepare('SELECT * FROM items WHERE id = ?') as {
-	get: (id: string) => DbItem | undefined;
+type InsertRow = {
+	id: string;
+	type: DbItem['type'];
+	filename: string | null;
+	mimetype: string | null;
+	size: number | null;
+	language: string | null;
+	url: string | null;
+	blob_url: string | null;
+	content: string | null;
+	link_meta: string | null;
+	password_hash: string | null;
+	expires_at: number | null;
+	created_at: number;
 };
 
-export const stmtDelete = db.prepare('DELETE FROM items WHERE id = ?');
+type Driver = {
+	getItem: (id: string) => Promise<DbItem | null>;
+	insertItem: (row: InsertRow) => Promise<boolean | void>;
+	deleteItem: (id: string) => Promise<void>;
+	updateLinkMeta: (id: string, linkMetaJson: string) => Promise<void>;
+	setBlobUrl?: (
+		id: string,
+		blobUrl: string,
+		mimetype: string | null,
+		size: number | null
+	) => Promise<void>;
+	listExpired: (now: number) => Promise<Pick<DbItem, 'id' | 'type' | 'blob_url'>[]>;
+	deleteExpired: (now: number) => Promise<number>;
+};
 
-export const stmtExpired = db.prepare(
-	'SELECT id, type FROM items WHERE expires_at IS NOT NULL AND expires_at < ?'
-) as unknown as { all: (now: number) => Pick<DbItem, 'id' | 'type'>[] };
+let driverPromise: Promise<Driver> | null = null;
 
-export const stmtDeleteExpired = db.prepare(
-	'DELETE FROM items WHERE expires_at IS NOT NULL AND expires_at < ?'
-) as unknown as { run: (now: number) => { changes: number } };
+async function getDriver(): Promise<Driver> {
+	if (driverPromise) return driverPromise;
+	driverPromise = (async () => {
+		if (isVercel || hasPostgres) {
+			const m = await import('./db-postgres.js');
+			return {
+				getItem: m.pgGetItem,
+				insertItem: m.pgInsertItem,
+				deleteItem: m.pgDeleteItem,
+				updateLinkMeta: m.pgUpdateLinkMeta,
+				setBlobUrl: m.pgSetBlobUrl,
+				listExpired: m.pgListExpired,
+				deleteExpired: m.pgDeleteExpired
+			} satisfies Driver;
+		}
+		const m = await import('./db-sqlite.js');
+		return {
+			getItem: m.sqliteGetItem,
+			insertItem: async (row: InsertRow) => {
+				// sqlite schema does not store blob_url/content columns; ignore them.
+				await m.sqliteInsertItem({
+					id: row.id,
+					type: row.type,
+					filename: row.filename,
+					mimetype: row.mimetype,
+					size: row.size,
+					language: row.language,
+					url: row.url,
+					link_meta: row.link_meta,
+					password_hash: row.password_hash,
+					expires_at: row.expires_at,
+					created_at: row.created_at
+				});
+			},
+			deleteItem: m.sqliteDeleteItem,
+			updateLinkMeta: m.sqliteUpdateLinkMeta,
+			listExpired: async (now: number) => {
+				const rows = await m.sqliteListExpired(now);
+				return rows.map((r) => ({ ...r, blob_url: null }));
+			},
+			deleteExpired: m.sqliteDeleteExpired
+		} satisfies Driver;
+	})();
+	return driverPromise;
+}
 
-export const stmtUpdateMeta = db.prepare('UPDATE items SET link_meta = ? WHERE id = ?');
+export async function dbGetItem(id: string): Promise<DbItem | null> {
+	return (await getDriver()).getItem(id);
+}
+
+export async function dbInsertItem(row: InsertRow): Promise<boolean> {
+	const res = await (await getDriver()).insertItem(row);
+	return typeof res === 'boolean' ? res : true;
+}
+
+export async function dbDeleteItem(id: string): Promise<void> {
+	return (await getDriver()).deleteItem(id);
+}
+
+export async function dbUpdateLinkMeta(id: string, linkMetaJson: string): Promise<void> {
+	return (await getDriver()).updateLinkMeta(id, linkMetaJson);
+}
+
+export async function dbSetBlobUrl(
+	id: string,
+	blobUrl: string,
+	mimetype: string | null,
+	size: number | null
+): Promise<void> {
+	const d = await getDriver();
+	if (!d.setBlobUrl) return;
+	return d.setBlobUrl(id, blobUrl, mimetype, size);
+}
+
+export async function dbListExpired(
+	now: number
+): Promise<Pick<DbItem, 'id' | 'type' | 'blob_url'>[]> {
+	return (await getDriver()).listExpired(now);
+}
+
+export async function dbDeleteExpired(now: number): Promise<number> {
+	return (await getDriver()).deleteExpired(now);
+}
 
 // ── Helper: map raw DB row to a typed public response ────────────────────────
 

@@ -6,6 +6,10 @@ export interface DbItem {
 	size: number | null;
 	language: string | null;
 	url: string | null;
+	/** For Vercel Blob-backed content (files; optionally text) */
+	blob_url?: string | null;
+	/** For DB-backed text content (used on serverless platforms) */
+	content?: string | null;
 	link_meta: string | null;
 	password_hash: string | null;
 	expires_at: number | null;

@@ -3,7 +3,7 @@
 	import Header from '$lib/components/Header.svelte';
 	import { formatBytes, formatRelative } from '$lib/utils.js';
 	import type { ItemMeta } from '$lib/types.js';
-
+	import { resolve } from '$app/paths';
 
 	// ── State ──────────────────────────────────────────────────────────────
 	type PageState = 'loading' | 'password' | 'error' | 'content';
@@ -135,7 +135,9 @@
 		if (!rawText) return;
 		await navigator.clipboard.writeText(rawText);
 		copyTextLabel = 'Copied!';
-		setTimeout(() => { copyTextLabel = 'Copy'; }, 1500);
+		setTimeout(() => {
+			copyTextLabel = 'Copy';
+		}, 1500);
 	}
 
 	let copyLinkLabel = $state('Copy URL');
@@ -143,7 +145,9 @@
 		if (!meta?.url) return;
 		await navigator.clipboard.writeText(meta.url);
 		copyLinkLabel = 'Copied!';
-		setTimeout(() => { copyLinkLabel = 'Copy URL'; }, 1500);
+		setTimeout(() => {
+			copyLinkLabel = 'Copy URL';
+		}, 1500);
 	}
 
 	// ── Link metadata polling ──────────────────────────────────────────────
@@ -181,11 +185,16 @@
 	});
 
 	function rawUrl() {
-		return `/api/item/${itemId}/raw${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+		const base = resolve('/api/item/[id]/raw', { id: itemId });
+		return `${base}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 	}
 
 	function getDomain(url: string) {
-		try { return new URL(url).hostname; } catch { return ''; }
+		try {
+			return new URL(url).hostname;
+		} catch {
+			return '';
+		}
 	}
 </script>
 
@@ -207,10 +216,8 @@
 <main class="view-main">
 	{#if pageState === 'loading'}
 		<p class="loading-text">Loading...</p>
-
 	{:else if pageState === 'error'}
 		<div class="notice error">{errorMsg}</div>
-
 	{:else if pageState === 'password'}
 		<div class="password-gate">
 			<h2>Password required</h2>
@@ -232,7 +239,6 @@
 				{passwordSubmitting ? 'Verifying...' : 'Unlock'}
 			</button>
 		</div>
-
 	{:else if pageState === 'content' && meta}
 		<!-- View header: meta + actions -->
 		<div class="view-header">
@@ -258,12 +264,19 @@
 
 			<div class="view-actions">
 				{#if meta.type === 'file'}
-					<a href={rawUrl()} download={meta.filename ?? itemId} class="btn btn-primary">
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+					<a
+						href={resolve('/api/item/[id]/raw', { id: itemId }) +
+							(token ? `?token=${encodeURIComponent(token)}` : '')}
+						download={meta.filename ?? itemId}
+						class="btn btn-primary"
+					>
 						Download
 					</a>
 				{:else if meta.type === 'link'}
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 					<a
-						href={meta.url ?? '#'}
+						href={meta.url ?? resolve('/')}
 						target="_blank"
 						rel="noopener noreferrer"
 						class="btn btn-primary"
@@ -272,7 +285,15 @@
 					</a>
 					<button onclick={copyLinkUrl} class="btn">{copyLinkLabel}</button>
 				{:else}
-					<a href={rawUrl()} target="_blank" class="btn">Raw</a>
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+					<a
+						href={resolve('/api/item/[id]/raw', { id: itemId }) +
+							(token ? `?token=${encodeURIComponent(token)}` : '')}
+						target="_blank"
+						class="btn"
+					>
+						Raw
+					</a>
 					<button onclick={copyText} class="btn">{copyTextLabel}</button>
 				{/if}
 				<button onclick={deleteItem} class="btn btn-danger">Delete</button>
@@ -285,7 +306,7 @@
 				<pre><code bind:this={codeEl}></code></pre>
 			</div>
 
-		<!-- ── File preview ────────────────────────────────────────────── -->
+			<!-- ── File preview ────────────────────────────────────────────── -->
 		{:else if meta.type === 'file'}
 			{@const mime = meta.mimetype ?? ''}
 			<div class="file-preview">
@@ -306,14 +327,20 @@
 						<div class="file-icon">&#128196;</div>
 						<div class="file-dl-name">{meta.filename ?? itemId}</div>
 						<div class="file-dl-size">{formatBytes(meta.size ?? 0)}</div>
-						<a href={rawUrl()} download={meta.filename ?? itemId} class="btn btn-primary">
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a
+							href={resolve('/api/item/[id]/raw', { id: itemId }) +
+								(token ? `?token=${encodeURIComponent(token)}` : '')}
+							download={meta.filename ?? itemId}
+							class="btn btn-primary"
+						>
 							Download
 						</a>
 					</div>
 				{/if}
 			</div>
 
-		<!-- ── Link preview ────────────────────────────────────────────── -->
+			<!-- ── Link preview ────────────────────────────────────────────── -->
 		{:else if meta.type === 'link'}
 			<div class="link-preview">
 				<div class="link-card">
@@ -323,7 +350,9 @@
 								src={meta.link_meta.image}
 								alt={meta.link_meta.title ?? ''}
 								class="link-card-image"
-								onerror={(e) => { (e.target as HTMLElement).parentElement!.style.display = 'none'; }}
+								onerror={(e) => {
+									(e.target as HTMLElement).parentElement!.style.display = 'none';
+								}}
 							/>
 						</div>
 					{/if}
@@ -336,7 +365,9 @@
 										src={meta.link_meta.favicon}
 										alt=""
 										class="link-card-favicon"
-										onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+										onerror={(e) => {
+											(e.target as HTMLElement).style.display = 'none';
+										}}
 									/>
 								{/if}
 								<span class="link-card-domain">

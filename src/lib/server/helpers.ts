@@ -12,6 +12,7 @@ export function generateId(): string {
 export function sanitizeFilename(name: string): string {
 	return (
 		String(name)
+			// eslint-disable-next-line no-control-regex
 			.replace(/[\x00-\x1f\x7f]/g, '') // control characters
 			.replace(/[/\\:*?"<>|]/g, '_') // filesystem-forbidden chars
 			.replace(/^\.+/, '_') // leading dots (hidden files on Unix)

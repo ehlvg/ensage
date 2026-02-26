@@ -1,5 +1,5 @@
 import { json, error, type RequestEvent } from '@sveltejs/kit';
-import { stmtGet } from '$lib/server/db.js';
+import { dbGetItem } from '$lib/server/db.js';
 import { makeToken } from '$lib/server/helpers.js';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
 import bcrypt from 'bcryptjs';
@@ -8,7 +8,7 @@ export async function POST(event: RequestEvent) {
 	const { params, request, getClientAddress } = event;
 	const ip = getClientAddress?.() ?? '';
 	checkRateLimit('auth', ip);
-	const row = stmtGet.get(params.id!);
+	const row = await dbGetItem(params.id!);
 	if (!row) throw error(404, 'Not found.');
 	if (row.expires_at && row.expires_at < Date.now()) throw error(410, 'Expired.');
 

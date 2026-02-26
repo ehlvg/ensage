@@ -45,4 +45,3 @@ export function checkRateLimit(kind: Kind, key: string): void {
 
 	current.count += 1;
 }
-
