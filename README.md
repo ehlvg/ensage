@@ -1,42 +1,57 @@
-# sv
+🌿 ensage
+=========
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+minimal self-hosted pastebin and file drop built with sveltekit, sqlite and filesystem storage.
 
-## Creating a project
+architecture
+------------
 
-If you're seeing this, you've probably already done this step. Congrats!
+- single-node sveltekit app with node adapter
+- sqlite database for item metadata (text, files, links)
+- uploads stored as flat files in an uploads directory
+- simple hmac-based access tokens for password-protected items
+- hourly cleanup job removing expired items and files
+- optional link previews and ai summaries via exa api
 
-```sh
-# create a new project
-npx sv create my-app
-```
+features
+--------
 
-To recreate this project with the same configuration:
+- share text snippets with syntax highlighting
+- upload files up to a configurable size limit
+- share external links with rich previews
+- optional item password protection
+- time-to-live options (1h, 24h, 7d, never)
+- light and dark themes, server-configurable accent color
 
-```sh
-# recreate this project
-bun x sv create --template minimal --types ts --add prettier eslint tailwindcss="plugins:none" --install bun ensage
-```
+how to run
+----------
 
-## Developing
+1. install dependencies:
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+   ```sh
+   bun install
+   ```
 
-```sh
-npm run dev
+2. create an `.env` file (or export env vars) if you want to override defaults:
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
+   - `PORT` – http port (default: 3000)
+   - `UPLOAD_DIR` – directory for stored files (default: ./uploads)
+   - `DB_PATH` – sqlite database path (default: ./db/ensage.db)
+   - `MAX_FILE_SIZE` – max file size in bytes (default: 524288000)
+   - `MAX_TEXT_SIZE` – max text size in bytes (default: 5242880)
+   - `TOKEN_SECRET` – hmac secret for access tokens (set this in production)
+   - `EXA_API_KEY` – optional api key for link summaries
 
-## Building
+3. start the app in development:
 
-To create a production version of your app:
+   ```sh
+   bun dev
+   ```
 
-```sh
-npm run build
-```
+4. build and run in production:
 
-You can preview the production build with `npm run preview`.
+   ```sh
+   bun build
+   bun start
+   ```
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
