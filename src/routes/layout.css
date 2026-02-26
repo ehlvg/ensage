@@ -1,0 +1,213 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+/* ── Design tokens ──────────────────────────────────────────────────────── */
+:root {
+	--bg: #f9f9f8;
+	--bg-2: #f0f0ee;
+	--bg-3: #e4e4e1;
+	--fg: #1a1a18;
+	--fg-2: #4a4a46;
+	--fg-3: #888880;
+	--accent: #22c55e;
+	--accent-d: #16a34a;
+	--border: #d4d4d0;
+	--danger: #dc2626;
+	--font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+	--radius: 4px;
+	--max-w: 760px;
+}
+
+[data-theme='dark'] {
+	--bg: #111110;
+	--bg-2: #1a1a18;
+	--bg-3: #242422;
+	--fg: #e8e8e4;
+	--fg-2: #a8a8a2;
+	--fg-3: #666660;
+	--accent: #22c55e;
+	--accent-d: #4ade80;
+	--border: #2e2e2c;
+	--danger: #f87171;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) {
+		--bg: #111110;
+		--bg-2: #1a1a18;
+		--bg-3: #242422;
+		--fg: #e8e8e4;
+		--fg-2: #a8a8a2;
+		--fg-3: #666660;
+		--accent: #22c55e;
+		--accent-d: #4ade80;
+		--border: #2e2e2c;
+		--danger: #f87171;
+	}
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+html {
+	font-size: 14px;
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	font-family: var(--font);
+	background: var(--bg);
+	color: var(--fg);
+	line-height: 1.6;
+	min-height: 100vh;
+}
+
+a {
+	color: var(--accent);
+	text-decoration: none;
+}
+a:hover {
+	text-decoration: underline;
+}
+
+/* ── Theme toggle icons ─────────────────────────────────────────────────── */
+.theme-icon-light,
+.theme-icon-dark {
+	display: none;
+	pointer-events: none;
+}
+
+@media (prefers-color-scheme: light) {
+	:root:not([data-theme='dark']) .theme-icon-light {
+		display: block;
+	}
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) .theme-icon-dark {
+		display: block;
+	}
+}
+[data-theme='light'] .theme-icon-light {
+	display: block;
+}
+[data-theme='light'] .theme-icon-dark {
+	display: none;
+}
+[data-theme='dark'] .theme-icon-dark {
+	display: block;
+}
+[data-theme='dark'] .theme-icon-light {
+	display: none;
+}
+
+/* ── highlight.js theme sync ─────────────────────────────────────────────── */
+.hljs {
+	background: var(--bg-2) !important;
+}
+
+/* ── Form inputs ─────────────────────────────────────────────────────────── */
+.field-input,
+.field-select,
+.field-textarea {
+	font-family: var(--font);
+	font-size: 0.875rem;
+	width: 100%;
+	padding: 0.5rem 0.75rem;
+	background: var(--bg-2);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	color: var(--fg);
+	outline: none;
+	appearance: none;
+	-webkit-appearance: none;
+}
+
+.field-input:focus,
+.field-select:focus,
+.field-textarea:focus {
+	border-color: var(--accent);
+}
+
+.field-select {
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888880' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 0.75rem center;
+	padding-right: 2rem;
+	cursor: pointer;
+}
+
+.field-textarea {
+	resize: vertical;
+	min-height: 280px;
+	line-height: 1.6;
+	tab-size: 2;
+}
+
+.field-label {
+	display: block;
+	font-size: 0.75rem;
+	color: var(--fg-3);
+	margin-bottom: 0.35rem;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn {
+	font-family: var(--font);
+	font-size: 0.8125rem;
+	font-weight: 500;
+	padding: 0.4rem 0.875rem;
+	border-radius: var(--radius);
+	border: 1px solid var(--border);
+	background: var(--bg-2);
+	color: var(--fg-2);
+	cursor: pointer;
+	line-height: 1.4;
+	white-space: nowrap;
+	text-decoration: none;
+	display: inline-flex;
+	align-items: center;
+}
+
+.btn:hover {
+	background: var(--bg-3);
+	color: var(--fg);
+	text-decoration: none;
+}
+
+.btn-primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #000;
+}
+
+.btn-primary:hover {
+	background: var(--accent-d);
+	border-color: var(--accent-d);
+	color: #000;
+}
+
+.btn-danger {
+	background: transparent;
+	border-color: var(--danger);
+	color: var(--danger);
+}
+
+.btn-danger:hover {
+	background: var(--danger);
+	color: #fff;
+}
+
+.btn:disabled,
+.btn[disabled] {
+	opacity: 0.45;
+	cursor: not-allowed;
+	pointer-events: none;
+}
