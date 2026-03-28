@@ -3,11 +3,17 @@
 # Multi-stage build: deps → build → production runtime
 # ─────────────────────────────────────────────────────────────
 
-# Stage 1: install dependencies
+# Stage 1: install all dependencies (for build)
 FROM oven/bun:1.2-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lockb* ./
 RUN bun install --frozen-lockfile
+
+# Stage 1.5: production-only dependencies
+FROM oven/bun:1.2-alpine AS prod-deps
+WORKDIR /app
+COPY package.json bun.lockb* ./
+RUN bun install --frozen-lockfile --production
 
 # Stage 2: build the SvelteKit app
 FROM oven/bun:1.2-alpine AS builder
@@ -26,6 +32,7 @@ RUN addgroup -g 1001 -S ensage && adduser -u 1001 -S ensage -G ensage
 # Copy the built output (adapter-node produces a standalone server)
 COPY --from=builder --chown=ensage:ensage /app/build ./build
 COPY --from=builder --chown=ensage:ensage /app/package.json ./package.json
+COPY --from=prod-deps --chown=ensage:ensage /app/node_modules ./node_modules
 
 # Create persistent data directories
 RUN mkdir -p /data/uploads /data/db && chown -R ensage:ensage /data
