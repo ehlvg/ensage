@@ -56,7 +56,7 @@
 							href="https://github.com/ehlvg/ensage"
 							target="_blank"
 							rel="noopener noreferrer"
-							class="flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
+							class="flex flex-row items-center gap-1.5 text-muted-foreground hover:text-foreground"
 						>
 							<RiGithubFill width={14} height={14} />
 							GitHub
