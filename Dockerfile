@@ -26,8 +26,9 @@ RUN bun run build
 FROM node:22-alpine AS runner
 WORKDIR /app
 
-# Create a non-root user for security
-RUN addgroup -g 1001 -S ensage && adduser -u 1001 -S ensage -G ensage
+# Install su-exec for privilege dropping and create non-root user
+RUN apk add --no-cache su-exec && \
+    addgroup -g 1001 -S ensage && adduser -u 1001 -S ensage -G ensage
 
 # Copy the built output (adapter-node produces a standalone server)
 COPY --from=builder --chown=ensage:ensage /app/build ./build
@@ -36,8 +37,6 @@ COPY --from=prod-deps --chown=ensage:ensage /app/node_modules ./node_modules
 
 # Create persistent data directories
 RUN mkdir -p /data/uploads /data/db && chown -R ensage:ensage /data
-
-USER ensage
 
 # Storage paths mapped to the /data volume
 ENV UPLOAD_DIR=/data/uploads
@@ -50,4 +49,9 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3000/ || exit 1
 
+# Run as root to fix volume permissions, then drop to ensage
+COPY --chown=root:root docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "build/index.js"]
