@@ -1,9 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Header from '$lib/components/Header.svelte';
-	import { formatBytes, formatRelative } from '$lib/utils.js';
+	import { formatBytes, formatRelative } from '$lib/format.js';
 	import type { ItemMeta } from '$lib/types.js';
 	import { resolve } from '$app/paths';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Spinner } from '$lib/components/ui/spinner/index.js';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
 	// ── State ──────────────────────────────────────────────────────────────
 	type PageState = 'loading' | 'password' | 'error' | 'content';
@@ -20,7 +27,6 @@
 	let itemId = $state('');
 	let sessionKey = '';
 
-	// Code block element ref
 	let codeEl = $state<HTMLElement | null>(null);
 
 	// ── Highlight.js theme sync ────────────────────────────────────────────
@@ -47,22 +53,15 @@
 				return;
 			}
 			meta = (await metaRes.json()) as ItemMeta;
-
 			document.title = `${meta.type === 'link' ? (meta.url ?? itemId) : (meta.filename ?? itemId)} — ensage`;
 
-			if (meta.protected && !accessToken) {
-				pageState = 'password';
-				return;
-			}
-
+			if (meta.protected && !accessToken) { pageState = 'password'; return; }
 			token = accessToken;
-
 			if (meta.type === 'text') {
 				const rawUrl = `/api/item/${itemId}/raw${accessToken ? `?token=${encodeURIComponent(accessToken)}` : ''}`;
 				const rawRes = await fetch(rawUrl);
 				rawText = await rawRes.text();
 			}
-
 			pageState = 'content';
 		} catch {
 			errorMsg = 'Failed to load item.';
@@ -70,7 +69,6 @@
 		}
 	}
 
-	// Apply highlight.js after code renders
 	$effect(() => {
 		if (pageState === 'content' && meta?.type === 'text' && codeEl && rawText !== null) {
 			const el = codeEl;
@@ -100,10 +98,7 @@
 				body: JSON.stringify({ password: passwordInput })
 			});
 			const data = (await res.json()) as { ok?: boolean; token?: string; message?: string };
-			if (!res.ok) {
-				passwordError = data.message ?? 'Wrong password.';
-				return;
-			}
+			if (!res.ok) { passwordError = data.message ?? 'Wrong password.'; return; }
 			const newToken = data.token ?? '';
 			sessionStorage.setItem(sessionKey, newToken);
 			await loadItem(newToken);
@@ -115,17 +110,19 @@
 	}
 
 	// ── Delete ─────────────────────────────────────────────────────────────
-	async function deleteItem() {
-		if (!confirm('Delete this item permanently?')) return;
+	let deleteDialogOpen = $state(false);
+
+	async function confirmDelete() {
 		const headers: Record<string, string> = {};
 		if (token) headers['x-access-token'] = token;
 		const r = await fetch(`/api/item/${itemId}`, { method: 'DELETE', headers });
 		if (r.ok) {
 			sessionStorage.removeItem(sessionKey);
-			window.location.href = '/';
+			window.location.href = '/new';
 		} else {
 			const d = (await r.json().catch(() => ({}))) as { message?: string };
-			alert(d.message ?? 'Delete failed.');
+			deleteDialogOpen = false;
+			passwordError = d.message ?? 'Delete failed.';
 		}
 	}
 
@@ -135,9 +132,7 @@
 		if (!rawText) return;
 		await navigator.clipboard.writeText(rawText);
 		copyTextLabel = 'Copied!';
-		setTimeout(() => {
-			copyTextLabel = 'Copy';
-		}, 1500);
+		setTimeout(() => { copyTextLabel = 'Copy'; }, 1500);
 	}
 
 	let copyLinkLabel = $state('Copy URL');
@@ -145,9 +140,7 @@
 		if (!meta?.url) return;
 		await navigator.clipboard.writeText(meta.url);
 		copyLinkLabel = 'Copied!';
-		setTimeout(() => {
-			copyLinkLabel = 'Copy URL';
-		}, 1500);
+		setTimeout(() => { copyLinkLabel = 'Copy URL'; }, 1500);
 	}
 
 	// ── Link metadata polling ──────────────────────────────────────────────
@@ -160,14 +153,9 @@
 				try {
 					const r = await fetch(`/api/item/${itemId}`);
 					const updated = (await r.json()) as ItemMeta;
-					if (updated.link_meta && meta) {
-						meta = { ...meta, link_meta: updated.link_meta };
-					}
-				} catch {
-					/* ignore */
-				} finally {
-					linkMetaLoading = false;
-				}
+					if (updated.link_meta && meta) meta = { ...meta, link_meta: updated.link_meta };
+				} catch { /* ignore */ }
+				finally { linkMetaLoading = false; }
 			}, 3000);
 		}
 	});
@@ -176,10 +164,8 @@
 	onMount(() => {
 		itemId = window.location.pathname.replace(/^\//, '');
 		sessionKey = `ensage-token-${itemId}`;
-
 		applyHljsTheme();
 		window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyHljsTheme);
-
 		const storedToken = sessionStorage.getItem(sessionKey) ?? '';
 		loadItem(storedToken);
 	});
@@ -190,512 +176,251 @@
 	}
 
 	function getDomain(url: string) {
-		try {
-			return new URL(url).hostname;
-		} catch {
-			return '';
-		}
+		try { return new URL(url).hostname; } catch { return ''; }
 	}
 </script>
 
 <svelte:head>
-	<link
-		id="hljs-theme-light"
-		rel="stylesheet"
-		href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"
-	/>
-	<link
-		id="hljs-theme-dark"
-		rel="stylesheet"
-		href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
-	/>
+	<link id="hljs-theme-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" />
+	<link id="hljs-theme-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
 </svelte:head>
 
-<Header />
+<Tooltip.Provider delayDuration={300}>
+<Header showFab />
 
-<main class="view-main">
-	{#if pageState === 'loading'}
-		<p class="loading-text">Loading...</p>
-	{:else if pageState === 'error'}
-		<div class="notice error">{errorMsg}</div>
-	{:else if pageState === 'password'}
-		<div class="password-gate">
-			<h2>Password required</h2>
-			<p>This item is password-protected.</p>
-			<div class="field">
-				<label class="field-label" for="pw-input">Password</label>
-				<input
-					id="pw-input"
-					type="password"
-					bind:value={passwordInput}
-					class="field-input"
-					onkeydown={(e) => e.key === 'Enter' && submitPassword()}
-				/>
-			</div>
-			{#if passwordError}
-				<div class="notice error">{passwordError}</div>
-			{/if}
-			<button onclick={submitPassword} disabled={passwordSubmitting} class="btn btn-primary w-full">
-				{passwordSubmitting ? 'Verifying...' : 'Unlock'}
-			</button>
-		</div>
-	{:else if pageState === 'content' && meta}
-		<!-- View header: meta + actions -->
-		<div class="view-header">
-			<div class="view-meta">
-				{#if meta.type === 'file'}
-					<span>{meta.filename ?? 'file'}</span>
-					<span>{formatBytes(meta.size ?? 0)}</span>
-					<span>{meta.mimetype ?? ''}</span>
-				{:else if meta.type === 'link'}
-					<span>link</span>
-					<span class="view-meta-url">{meta.url ?? ''}</span>
-				{:else}
-					<span>text</span>
-					{#if meta.language && meta.language !== 'auto'}
-						<span>{meta.language}</span>
-					{/if}
-					<span>{formatBytes(meta.size ?? 0)}</span>
-				{/if}
-				{#if meta.expires_at}
-					<span>expires {formatRelative(meta.expires_at)}</span>
-				{/if}
+<div class="flex min-h-svh flex-col">
+	<main class="flex-1 w-full max-w-4xl mx-auto px-5 py-8 sm:px-6">
+
+		<!-- ── Loading ─────────────────────────────────────────────────── -->
+		{#if pageState === 'loading'}
+			<div class="flex items-center gap-3 py-12">
+				<Spinner class="text-primary" />
+				<span class="text-sm text-muted-foreground">Loading...</span>
 			</div>
 
-			<div class="view-actions">
-				{#if meta.type === 'file'}
-					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-					<a
-						href={resolve('/api/item/[id]/raw', { id: itemId }) +
-							(token ? `?token=${encodeURIComponent(token)}` : '')}
-						download={meta.filename ?? itemId}
-						class="btn btn-primary"
-					>
-						Download
-					</a>
-				{:else if meta.type === 'link'}
-					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-					<a
-						href={meta.url ?? resolve('/')}
-						target="_blank"
-						rel="noopener noreferrer"
-						class="btn btn-primary"
-					>
-						Open link
-					</a>
-					<button onclick={copyLinkUrl} class="btn">{copyLinkLabel}</button>
-				{:else}
-					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-					<a
-						href={resolve('/api/item/[id]/raw', { id: itemId }) +
-							(token ? `?token=${encodeURIComponent(token)}` : '')}
-						target="_blank"
-						class="btn"
-					>
-						Raw
-					</a>
-					<button onclick={copyText} class="btn">{copyTextLabel}</button>
-				{/if}
-				<button onclick={deleteItem} class="btn btn-danger">Delete</button>
-			</div>
-		</div>
-
-		<!-- ── Text content ────────────────────────────────────────────── -->
-		{#if meta.type === 'text'}
-			<div class="code-wrap">
-				<pre><code bind:this={codeEl}></code></pre>
+		<!-- ── Error ───────────────────────────────────────────────────── -->
+		{:else if pageState === 'error'}
+			<div class="flex flex-col items-start gap-3 py-16">
+				<div class="text-7xl font-bold tracking-tight text-muted-foreground/30">404</div>
+				<p class="text-base text-muted-foreground">{errorMsg}</p>
+				<Button href="/new" class="mt-2">New paste →</Button>
 			</div>
 
-			<!-- ── File preview ────────────────────────────────────────────── -->
-		{:else if meta.type === 'file'}
-			{@const mime = meta.mimetype ?? ''}
-			<div class="file-preview">
-				{#if mime.startsWith('image/')}
-					<img src={rawUrl()} alt={meta.filename ?? ''} />
-				{:else if mime.startsWith('video/')}
-					<video controls>
-						<source src={rawUrl()} type={mime} />
-					</video>
-				{:else if mime.startsWith('audio/')}
-					<audio controls>
-						<source src={rawUrl()} type={mime} />
-					</audio>
-				{:else if mime === 'application/pdf'}
-					<iframe src={rawUrl()} title="PDF preview"></iframe>
-				{:else}
-					<div class="file-download-box">
-						<div class="file-icon">&#128196;</div>
-						<div class="file-dl-name">{meta.filename ?? itemId}</div>
-						<div class="file-dl-size">{formatBytes(meta.size ?? 0)}</div>
-						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-						<a
-							href={resolve('/api/item/[id]/raw', { id: itemId }) +
-								(token ? `?token=${encodeURIComponent(token)}` : '')}
-							download={meta.filename ?? itemId}
-							class="btn btn-primary"
-						>
-							Download
-						</a>
-					</div>
-				{/if}
-			</div>
+		<!-- ── Password gate ───────────────────────────────────────────── -->
+		{:else if pageState === 'password'}
+			<div class="mx-auto mt-16 max-w-sm">
+				<div class="mb-5 flex h-10 w-10 items-center justify-center rounded-xl border border-border text-muted-foreground">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+						<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+						<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+					</svg>
+				</div>
+				<h2 class="mb-1 text-lg font-semibold text-foreground">Password required</h2>
+				<p class="mb-5 text-sm text-muted-foreground">This item is password-protected.</p>
 
-			<!-- ── Link preview ────────────────────────────────────────────── -->
-		{:else if meta.type === 'link'}
-			<div class="link-preview">
-				<div class="link-card">
-					{#if meta.link_meta?.image}
-						<div class="link-card-image-wrap">
-							<img
-								src={meta.link_meta.image}
-								alt={meta.link_meta.title ?? ''}
-								class="link-card-image"
-								onerror={(e) => {
-									(e.target as HTMLElement).parentElement!.style.display = 'none';
-								}}
-							/>
-						</div>
-					{/if}
-
-					<div class="link-card-body">
-						{#if meta.link_meta?.favicon || getDomain(meta.link_meta?.url ?? meta.url ?? '')}
-							<div class="link-card-favicon-row">
-								{#if meta.link_meta?.favicon}
-									<img
-										src={meta.link_meta.favicon}
-										alt=""
-										class="link-card-favicon"
-										onerror={(e) => {
-											(e.target as HTMLElement).style.display = 'none';
-										}}
-									/>
-								{/if}
-								<span class="link-card-domain">
-									{getDomain(meta.link_meta?.url ?? meta.url ?? '')}
-								</span>
-							</div>
-						{/if}
-
-						<div class="link-card-title">
-							{meta.link_meta?.title ?? meta.url ?? ''}
-						</div>
-
-						{#if meta.link_meta?.description}
-							<div class="link-card-desc">{meta.link_meta.description}</div>
-						{/if}
-
-						<div class="link-card-url">
-							{meta.link_meta?.url ?? meta.url ?? ''}
-						</div>
-					</div>
+				<div class="mb-3 space-y-1.5">
+					<Label for="pw-input" class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+						Password
+					</Label>
+					<Input
+						id="pw-input"
+						type="password"
+						bind:value={passwordInput}
+						placeholder="Enter password..."
+						onkeydown={(e) => e.key === 'Enter' && submitPassword()}
+						autofocus
+					/>
 				</div>
 
-				{#if meta.link_meta?.summary}
-					<div class="link-summary-wrap">
-						<div class="link-summary-label">AI summary</div>
-						<div class="link-summary-text">{meta.link_meta.summary}</div>
-					</div>
-				{:else if linkMetaLoading}
-					<div class="link-summary-loading">
-						<span style="color: var(--fg-3); font-size: 0.8125rem;">Loading metadata...</span>
+				{#if passwordError}
+					<div class="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+						{passwordError}
 					</div>
 				{/if}
+
+				<Button onclick={submitPassword} disabled={passwordSubmitting} class="w-full justify-center">
+					{#if passwordSubmitting}<Spinner class="mr-2 h-3.5 w-3.5" />{/if}
+					{passwordSubmitting ? 'Verifying...' : 'Unlock →'}
+				</Button>
 			</div>
+
+		<!-- ── Content ─────────────────────────────────────────────────── -->
+		{:else if pageState === 'content' && meta}
+			<!-- View header bar -->
+			<div class="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-5">
+				<!-- Meta info -->
+				<div class="flex flex-wrap items-center gap-2">
+					<Badge variant="outline" class="text-[10px] font-semibold uppercase tracking-wider">
+						{meta.type}
+					</Badge>
+					{#if meta.type === 'file'}
+						<span class="text-sm font-medium text-foreground">{meta.filename ?? 'file'}</span>
+						<span class="text-sm text-muted-foreground">{formatBytes(meta.size ?? 0)}</span>
+						{#if meta.mimetype}
+							<Badge variant="outline" class="text-[10px]">{meta.mimetype}</Badge>
+						{/if}
+					{:else if meta.type === 'link'}
+						<span class="max-w-xs truncate text-sm text-muted-foreground">{meta.url ?? ''}</span>
+					{:else}
+						{#if meta.language && meta.language !== 'auto'}
+							<Badge variant="outline" class="text-[10px]">{meta.language}</Badge>
+						{/if}
+						<span class="text-sm text-muted-foreground">{formatBytes(meta.size ?? 0)}</span>
+					{/if}
+					{#if meta.expires_at}
+						<span class="flex items-center gap-1 text-xs text-muted-foreground">
+							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+								<circle cx="12" cy="12" r="10"></circle>
+								<polyline points="12 6 12 12 16 14"></polyline>
+							</svg>
+							{formatRelative(meta.expires_at)}
+						</span>
+					{/if}
+				</div>
+
+				<!-- Actions -->
+				<div class="flex flex-wrap items-center gap-2">
+					{#if meta.type === 'file'}
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<Button href={resolve('/api/item/[id]/raw', { id: itemId }) + (token ? `?token=${encodeURIComponent(token)}` : '')} download={meta.filename ?? itemId} size="sm">
+							Download
+						</Button>
+					{:else if meta.type === 'link'}
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<Button href={meta.url ?? resolve('/')} target="_blank" rel="noopener noreferrer" size="sm">
+							Open link
+						</Button>
+						<Button onclick={copyLinkUrl} variant="outline" size="sm">{copyLinkLabel}</Button>
+					{:else}
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<Button href={resolve('/api/item/[id]/raw', { id: itemId }) + (token ? `?token=${encodeURIComponent(token)}` : '')} target="_blank" variant="outline" size="sm">
+							Raw
+						</Button>
+						<Button onclick={copyText} variant="outline" size="sm">{copyTextLabel}</Button>
+					{/if}
+
+					<!-- Delete with AlertDialog -->
+					<AlertDialog.Root bind:open={deleteDialogOpen}>
+						<AlertDialog.Trigger>
+							{#snippet child({ props })}
+								<Button {...props} variant="outline" size="sm" class="text-destructive hover:border-destructive/50 hover:bg-destructive/10">
+									Delete
+								</Button>
+							{/snippet}
+						</AlertDialog.Trigger>
+						<AlertDialog.Portal>
+							<AlertDialog.Overlay />
+							<AlertDialog.Content>
+								<AlertDialog.Header>
+									<AlertDialog.Title>Delete this item?</AlertDialog.Title>
+									<AlertDialog.Description>
+										This action cannot be undone. The item will be permanently deleted and the link will stop working.
+									</AlertDialog.Description>
+								</AlertDialog.Header>
+								<AlertDialog.Footer>
+									<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+									<AlertDialog.Action onclick={confirmDelete} class="bg-destructive text-white hover:bg-destructive/90">
+										Delete
+									</AlertDialog.Action>
+								</AlertDialog.Footer>
+							</AlertDialog.Content>
+						</AlertDialog.Portal>
+					</AlertDialog.Root>
+				</div>
+			</div>
+
+			<!-- Text content -->
+			{#if meta.type === 'text'}
+				<div class="overflow-hidden rounded-xl border border-border">
+					<pre class="overflow-x-auto bg-muted p-5 text-sm leading-7"><code bind:this={codeEl} class="font-mono bg-transparent p-0"></code></pre>
+				</div>
+
+			<!-- File preview -->
+			{:else if meta.type === 'file'}
+				{@const mime = meta.mimetype ?? ''}
+				<div class="overflow-hidden rounded-xl border border-border bg-muted/20">
+					{#if mime.startsWith('image/')}
+						<img src={rawUrl()} alt={meta.filename ?? ''} class="block max-h-[70vh] max-w-full" />
+					{:else if mime.startsWith('video/')}
+						<video controls class="block max-h-[70vh] max-w-full">
+							<source src={rawUrl()} type={mime} />
+						</video>
+					{:else if mime.startsWith('audio/')}
+						<audio controls class="block w-full p-4">
+							<source src={rawUrl()} type={mime} />
+						</audio>
+					{:else if mime === 'application/pdf'}
+						<iframe src={rawUrl()} title="PDF preview" class="block h-[70vh] w-full border-none"></iframe>
+					{:else}
+						<div class="flex flex-col items-center gap-3 py-16 text-center">
+							<div class="flex h-14 w-14 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground">
+								<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true">
+									<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+									<polyline points="13 2 13 9 20 9"></polyline>
+								</svg>
+							</div>
+							<p class="font-medium text-foreground">{meta.filename ?? itemId}</p>
+							<p class="text-sm text-muted-foreground">{formatBytes(meta.size ?? 0)}</p>
+							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+							<Button href={resolve('/api/item/[id]/raw', { id: itemId }) + (token ? `?token=${encodeURIComponent(token)}` : '')} download={meta.filename ?? itemId} class="mt-2">
+								Download
+							</Button>
+						</div>
+					{/if}
+				</div>
+
+			<!-- Link preview -->
+			{:else if meta.type === 'link'}
+				<div class="flex flex-col gap-4">
+					<div class="overflow-hidden rounded-xl border border-border bg-card">
+						{#if meta.link_meta?.image}
+							<div class="max-h-72 w-full overflow-hidden bg-muted">
+								<img src={meta.link_meta.image} alt={meta.link_meta.title ?? ''} class="block max-h-72 w-full object-cover"
+									onerror={(e) => { (e.target as HTMLElement).parentElement!.style.display = 'none'; }} />
+							</div>
+						{/if}
+						<div class="flex flex-col gap-2 p-5">
+							{#if meta.link_meta?.favicon || getDomain(meta.link_meta?.url ?? meta.url ?? '')}
+								<div class="flex items-center gap-2">
+									{#if meta.link_meta?.favicon}
+										<img src={meta.link_meta.favicon} alt="" class="h-3.5 w-3.5 flex-shrink-0 rounded-sm object-contain"
+											onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
+									{/if}
+									<span class="text-xs text-muted-foreground">{getDomain(meta.link_meta?.url ?? meta.url ?? '')}</span>
+								</div>
+							{/if}
+							<p class="text-base font-semibold leading-snug text-foreground">{meta.link_meta?.title ?? meta.url ?? ''}</p>
+							{#if meta.link_meta?.description}
+								<p class="line-clamp-3 text-sm leading-relaxed text-muted-foreground">{meta.link_meta.description}</p>
+							{/if}
+							<p class="break-all text-xs text-primary">{meta.link_meta?.url ?? meta.url ?? ''}</p>
+						</div>
+					</div>
+
+					{#if meta.link_meta?.summary}
+						<div class="rounded-xl border border-border bg-muted/20 p-5">
+							<p class="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">AI summary</p>
+							<p class="text-sm leading-relaxed text-muted-foreground">{meta.link_meta.summary}</p>
+						</div>
+					{:else if linkMetaLoading}
+						<div class="flex items-center gap-2.5 py-2 text-sm text-muted-foreground">
+							<Spinner class="h-3.5 w-3.5" />
+							Loading preview...
+						</div>
+					{/if}
+				</div>
+			{/if}
 		{/if}
-	{/if}
-</main>
+	</main>
 
-<footer class="site-footer">ensage</footer>
-
-<style>
-	.view-main {
-		max-width: var(--max-w);
-		margin: 0 auto;
-		padding: 2rem 1.5rem;
-	}
-
-	.loading-text {
-		font-size: 0.875rem;
-		color: var(--fg-3);
-	}
-
-	.notice {
-		padding: 0.625rem 0.875rem;
-		border-radius: var(--radius);
-		font-size: 0.8125rem;
-		margin-bottom: 1rem;
-		border: 1px solid var(--border);
-		color: var(--fg-2);
-		background: var(--bg-2);
-	}
-
-	.notice.error {
-		border-color: var(--danger);
-		color: var(--danger);
-		background: transparent;
-	}
-
-	.field {
-		margin-bottom: 1rem;
-	}
-
-	/* Password gate */
-	.password-gate {
-		max-width: 360px;
-		margin: 4rem auto 0;
-		text-align: center;
-	}
-
-	.password-gate h2 {
-		font-size: 1rem;
-		margin-bottom: 0.5rem;
-		font-weight: 500;
-	}
-
-	.password-gate p {
-		font-size: 0.8125rem;
-		color: var(--fg-3);
-		margin-bottom: 1.5rem;
-	}
-
-	.password-gate .field {
-		text-align: left;
-	}
-
-	.w-full {
-		width: 100%;
-	}
-
-	/* View header */
-	.view-header {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 1rem;
-		margin-bottom: 1.25rem;
-		flex-wrap: wrap;
-	}
-
-	.view-meta {
-		font-size: 0.8125rem;
-		color: var(--fg-3);
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.75rem;
-		align-items: center;
-	}
-
-	.view-meta span {
-		white-space: nowrap;
-	}
-
-	.view-meta-url {
-		max-width: 280px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		display: inline-block;
-		vertical-align: middle;
-	}
-
-	.view-actions {
-		display: flex;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-		flex-shrink: 0;
-	}
-
-	/* Code wrap */
-	.code-wrap {
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		overflow: hidden;
-	}
-
-	.code-wrap pre {
-		margin: 0;
-		overflow-x: auto;
-		padding: 1.25rem;
-		font-size: 0.8125rem;
-		line-height: 1.7;
-		background: var(--bg-2) !important;
-	}
-
-	.code-wrap pre code {
-		font-family: var(--font);
-		background: none !important;
-		padding: 0 !important;
-	}
-
-	/* File preview */
-	.file-preview {
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		overflow: hidden;
-		background: var(--bg-2);
-	}
-
-	.file-preview img,
-	.file-preview video {
-		display: block;
-		max-width: 100%;
-		max-height: 70vh;
-	}
-
-	.file-preview audio {
-		display: block;
-		padding: 1rem;
-		width: 100%;
-	}
-
-	.file-preview iframe {
-		width: 100%;
-		height: 70vh;
-		border: none;
-		display: block;
-	}
-
-	.file-download-box {
-		padding: 3rem 1.5rem;
-		text-align: center;
-		color: var(--fg-2);
-	}
-
-	.file-icon {
-		font-size: 2.5rem;
-		margin-bottom: 0.75rem;
-	}
-
-	.file-dl-name {
-		margin-bottom: 0.25rem;
-		word-break: break-all;
-	}
-
-	.file-dl-size {
-		font-size: 0.8125rem;
-		color: var(--fg-3);
-		margin-bottom: 1.25rem;
-	}
-
-	/* Link preview */
-	.link-preview {
-		display: flex;
-		flex-direction: column;
-		gap: 1.25rem;
-	}
-
-	.link-card {
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		overflow: hidden;
-		background: var(--bg-2);
-		display: flex;
-		flex-direction: column;
-	}
-
-	.link-card-image-wrap {
-		width: 100%;
-		max-height: 320px;
-		overflow: hidden;
-		background: var(--bg-3);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.link-card-image {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-		max-height: 320px;
-	}
-
-	.link-card-body {
-		padding: 1.25rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.link-card-favicon-row {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.125rem;
-	}
-
-	.link-card-favicon {
-		width: 16px;
-		height: 16px;
-		border-radius: 2px;
-		object-fit: contain;
-		flex-shrink: 0;
-	}
-
-	.link-card-domain {
-		font-size: 0.75rem;
-		color: var(--fg-3);
-		text-transform: lowercase;
-		letter-spacing: 0.01em;
-	}
-
-	.link-card-title {
-		font-size: 1rem;
-		font-weight: 500;
-		color: var(--fg);
-		line-height: 1.4;
-		word-break: break-word;
-	}
-
-	.link-card-desc {
-		font-size: 0.8125rem;
-		color: var(--fg-2);
-		line-height: 1.6;
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-
-	.link-card-url {
-		font-size: 0.75rem;
-		color: var(--accent);
-		word-break: break-all;
-		margin-top: 0.25rem;
-	}
-
-	.link-summary-wrap {
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		padding: 1rem 1.25rem;
-		background: var(--bg-2);
-	}
-
-	.link-summary-label {
-		font-size: 0.7rem;
-		color: var(--fg-3);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		margin-bottom: 0.6rem;
-	}
-
-	.link-summary-text {
-		font-size: 0.875rem;
-		color: var(--fg-2);
-		line-height: 1.7;
-	}
-
-	.link-summary-loading {
-		padding: 0.5rem 0;
-	}
-
-	.site-footer {
-		border-top: 1px solid var(--border);
-		padding: 1rem 1.5rem;
-		text-align: center;
-		font-size: 0.75rem;
-		color: var(--fg-3);
-		margin-top: 4rem;
-	}
-</style>
+	<footer class="border-t border-border px-5 py-4 sm:px-6">
+		<div class="mx-auto flex max-w-4xl items-center gap-4 text-sm text-muted-foreground">
+			<a href="/" class="font-semibold text-foreground no-underline hover:text-primary">ensage</a>
+			<span>·</span>
+			<a href="/new" class="transition-colors hover:text-foreground no-underline">New paste</a>
+			<span>·</span>
+			<a href="https://github.com/ehlvg/ensage" target="_blank" rel="noopener noreferrer" class="transition-colors hover:text-foreground no-underline">GitHub</a>
+		</div>
+	</footer>
+</div>
+</Tooltip.Provider>

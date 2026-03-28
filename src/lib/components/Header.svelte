@@ -1,77 +1,117 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import * as NavigationMenu from '$lib/components/ui/navigation-menu/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { RiGithubFill, RiMoonLine, RiSunLine, RiAddLine } from 'remixicon-svelte';
+	import { onMount } from 'svelte';
+
+	let {
+		showFab = false
+	}: {
+		showFab?: boolean;
+	} = $props();
+
+	let isDark = $state(false);
+
+	onMount(() => {
+		const stored = localStorage.getItem('ensage-theme');
+		if (stored) isDark = stored === 'dark';
+		else isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+	});
 
 	function toggleTheme() {
-		const current = document.documentElement.getAttribute('data-theme');
-		const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-		let next: string;
-		if (!current) {
-			next = sysDark ? 'light' : 'dark';
-		} else if (current === 'dark') {
-			next = 'light';
-		} else {
-			next = 'dark';
-		}
+		isDark = !isDark;
+		const next = isDark ? 'dark' : 'light';
 		document.documentElement.setAttribute('data-theme', next);
+		document.documentElement.classList.toggle('dark', isDark);
 		localStorage.setItem('ensage-theme', next);
 	}
 </script>
 
-<header
-	class="sticky top-0 z-10 flex h-12 items-center justify-between border-b px-6"
-	style="border-color: var(--border); background: var(--bg);"
->
-	<a
-		href={resolve('/')}
-		class="text-sm font-medium tracking-tight no-underline"
-		style="color: var(--fg);"
-	>
-		en<span style="color: var(--accent);">sage</span>
-	</a>
+<Tooltip.Provider delayDuration={300}>
+	<header class="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
+		<div class="flex h-12 items-center gap-1 px-5 sm:px-6">
+			<!-- Logo -->
+			<a
+				href={resolve('/')}
+				class="mr-1 text-[0.9375rem] font-semibold tracking-tight text-foreground no-underline"
+			>
+				en<span class="text-primary">sage</span>
+			</a>
 
-	<div class="flex items-center gap-2">
-		<button
-			onclick={toggleTheme}
-			class="flex h-8 w-8 cursor-pointer items-center justify-center rounded border bg-transparent p-0"
-			style="border-color: transparent; color: var(--fg-3);"
-			aria-label="Toggle theme"
-		>
-			<!-- Sun icon (light mode) -->
-			<svg
-				class="theme-icon-light"
-				width="16"
-				height="16"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			>
-				<circle cx="12" cy="12" r="5" />
-				<line x1="12" y1="1" x2="12" y2="3" />
-				<line x1="12" y1="21" x2="12" y2="23" />
-				<line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-				<line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-				<line x1="1" y1="12" x2="3" y2="12" />
-				<line x1="21" y1="12" x2="23" y2="12" />
-				<line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-				<line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-			</svg>
-			<!-- Moon icon (dark mode) -->
-			<svg
-				class="theme-icon-dark"
-				width="16"
-				height="16"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			>
-				<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-			</svg>
-		</button>
-	</div>
-</header>
+			<!-- NavigationMenu -->
+			<NavigationMenu.Root viewport={false}>
+				<NavigationMenu.List>
+					<NavigationMenu.Item>
+						<NavigationMenu.Link
+							href={resolve('/new')}
+							class="flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
+						>
+							New
+						</NavigationMenu.Link>
+					</NavigationMenu.Item>
+					<NavigationMenu.Item>
+						<NavigationMenu.Link
+							href="https://github.com/ehlvg/ensage"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
+						>
+							<RiGithubFill width={14} height={14} />
+							GitHub
+						</NavigationMenu.Link>
+					</NavigationMenu.Item>
+				</NavigationMenu.List>
+			</NavigationMenu.Root>
+
+			<!-- Right: theme toggle -->
+			<div class="ml-auto">
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								variant="ghost"
+								size="icon"
+								onclick={toggleTheme}
+								aria-label="Toggle theme"
+								class="h-8 w-8 text-muted-foreground hover:text-foreground"
+							>
+								{#if isDark}
+									<RiSunLine width={15} height={15} />
+								{:else}
+									<RiMoonLine width={15} height={15} />
+								{/if}
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p>{isDark ? 'Light mode' : 'Dark mode'}</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			</div>
+		</div>
+	</header>
+
+	<!-- FAB: New share (shown only on view pages) -->
+	{#if showFab}
+		<Tooltip.Root>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<a
+						{...props}
+						href={resolve('/new')}
+						class="fixed bottom-6 right-6 z-50 flex h-13 w-13 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all hover:opacity-90 hover:shadow-xl no-underline"
+						aria-label="New share"
+					>
+						<RiAddLine width={22} height={22} />
+					</a>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content side="left">
+				<p>New share</p>
+			</Tooltip.Content>
+		</Tooltip.Root>
+	{/if}
+</Tooltip.Provider>
